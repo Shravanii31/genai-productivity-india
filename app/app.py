@@ -1,8 +1,11 @@
-"""Streamlit wizard app: predicts a firm's expected AI-driven productivity increase."""
+"""Streamlit single-page app: estimates a firm's expected AI-driven productivity increase."""
 import json
 from pathlib import Path
 
 import joblib
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -12,9 +15,73 @@ MODELS_DIR = ROOT / "models"
 SAMPLE_AVERAGE = 11.0  # mean of ai_f2a2 in the modeling sample
 SCALE_MAX = 35  # visual gauge scale, %
 
-st.set_page_config(page_title="AI Productivity Estimator", page_icon="📈", layout="centered")
+# Human-readable labels for the 25 model features, used in the "what drove your
+# result" chart and callouts -- feature codes alone aren't readable in a chart axis.
+FEATURE_LABELS = {
+    "reskilling_need_share": "Reskilling need",
+    "workers_wanting_more_hours_share": "Workers wanting more hours",
+    "idle_time_share": "Idle production time",
+    "admin_worker_share": "Admin worker share",
+    "share_clerical": "Clerical staff share",
+    "sales_seasonality_ratio": "Sales seasonality",
+    "policy_support_score": "Policy support score",
+    "ai_b3a3_flag": "AI used for drafting",
+    "share_professionals": "Professional staff share",
+    "ai_b2a4_flag": "Generative AI use",
+    "share_managers": "Manager staff share",
+    "worker_seasonality_ratio": "Worker seasonality",
+    "uses_genai": "Generative AI use",
+    "share_computer_use": "Computer use share",
+    "log_workers": "Firm size",
+    "task_breadth": "AI task breadth",
+    "finance_digitization": "Finance digitization",
+    "ai_g1b_flag": "Workforce-training policy support",
+    "customer_digitization": "Customer digitization",
+    "ai_b3a2_flag": "AI used for summarizing",
+    "can_absorb_demand_shock": "Demand-shock capacity",
+    "supplychain_digitization": "Supply chain digitization",
+    "ai_breadth_score": "AI technology breadth",
+    "ai_g1f_flag": "Graduate-skills policy support",
+    "has_website": "Has a website",
+}
 
-STEPS = ["Intro", "Firm Profile", "AI Usage", "Digitization", "Operations & Outlook", "Policy", "Result"]
+
+def feature_label(f: str) -> str:
+    return FEATURE_LABELS.get(f, f)
+
+
+@st.cache_data
+def load_permutation_importance():
+    df = pd.read_csv(ROOT / "reports" / "permutation_importance.csv")
+    return df.set_index("feature")["importance_mean"].to_dict()
+
+
+@st.cache_data
+def load_modeling_sample():
+    return pd.read_csv(ROOT / "data" / "processed" / "model_data.csv")
+
+st.set_page_config(page_title="Your AI Productivity Edge", page_icon="📈", layout="centered")
+
+# Fields not collected from the user -- fixed at these defaults (roughly the modeling
+# sample's typical/median values) per an explicit request to cut the form down to just:
+# reskilling need %, idle time %, workers-wanting-more-hours %, AI technologies, AI
+# tasks, and 1-2 digitization questions.
+DEFAULTS = {
+    "total_workers": 25,
+    "pct_managers": 10,
+    "pct_professionals": 15,
+    "pct_clerical": 10,
+    "pct_admin": 10,
+    "has_website": "Yes",
+    "pct_computer_use": 40,
+    "supplychain_digitization": 2,
+    "can_absorb_shock": "Yes",
+    "peak_sales": 10.0,
+    "low_sales": 8.0,
+    "peak_workers": 25,
+    "low_workers": 22,
+    "policy_support": [],
+}
 
 # ---------------------------------------------------------------------------
 # Model / preprocessing loading
@@ -68,341 +135,482 @@ CSS = """
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #0F1324; --panel: #171C36; --panel-2: #1E2444;
-  --border: #2A315A; --text: #F5F6FB; --text-dim: #B4BAD9; --text-faint: #7B82AC;
-  --accent: #F0A83A; --accent-2: #33C7B0;
+    --bg: #0D0F26;
+    --panel: #191C3D;
+    --panel-2: #232750;
+    --border: #33366B;
+    --text: #F7F7FB;
+    --text-dim: #C2C4E8;
+    --text-faint: #8C8FC0;
+    --accent-purple: #C77DFF;
+    --accent-yellow: #FFD966;
+    --gradient: linear-gradient(135deg, #C77DFF 0%, #FFD966 100%);
 }
-.stApp {
-  background: radial-gradient(circle at 20% 0%, #1B2147 0%, var(--bg) 55%);
-  color: var(--text);
-  font-family: 'Inter', sans-serif;
+html { scroll-behavior: smooth; }
+html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+    background:
+      radial-gradient(circle at 15% 20%, rgba(199, 125, 255, 0.18) 0%, transparent 45%),
+      radial-gradient(circle at 85% 75%, rgba(255, 217, 102, 0.12) 0%, transparent 45%),
+      radial-gradient(circle at 50% 100%, rgba(199, 125, 255, 0.10) 0%, transparent 60%),
+      #0D0F26 !important;
+    min-height: 100vh;
+}
+.stApp { background-attachment: fixed; color: var(--text); font-family: 'Inter', sans-serif; }
+/* neutralize any competing background Streamlit's own theme sets on these --
+   this is what was boxing the gradient into block-container's bounds */
+[data-testid="stHeader"], .block-container, [data-testid="stMainBlockContainer"] {
+    background: transparent !important;
 }
 h1, h2, h3 { font-family: 'Space Grotesk', sans-serif !important; color: var(--text) !important; }
 p, span, label, div { color: var(--text); }
-.block-container { max-width: 640px; padding-top: 2rem; }
+.block-container { max-width: 720px; margin: 0 auto !important; padding-top: 1.4rem; padding-bottom: 2.5rem; font-size: 1.18rem; }
 
-/* progress dots */
-.dots { display:flex; gap:8px; justify-content:center; margin-bottom: 1.6rem; }
-.dot { width:8px; height:8px; border-radius:50%; background: var(--border); }
-.dot.active { background: var(--accent); width:22px; border-radius:6px; }
-.dot.done { background: var(--accent-2); }
+/* Streamlit's own widget labels/captions don't pick up rem-based sizing on ancestors
+   the way our custom classes do (Streamlit sets its own explicit font-size) --
+   target them directly so slider/pills labels actually get bigger too. */
+div[data-testid="stWidgetLabel"] p { font-size: 1.15rem !important; }
+div[data-testid="stMarkdownContainer"] p { font-size: 1.15rem !important; }
 
-.step-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.15rem; }
-.step-sub { color: var(--text-dim); font-size: 0.9rem; margin-bottom: 1.4rem; }
+.section-heading { font-size: 1.85rem; font-weight: 700; font-family: 'Space Grotesk', sans-serif; margin: 1.8rem 0 0.2rem; }
+.section-sub { color: var(--text-dim); font-size: 1.35rem; margin-bottom: 0.9rem; }
 
 div[data-testid="stButton"] > button {
-  background: var(--accent); color: #201202; border: none; border-radius: 10px;
-  font-weight: 600; padding: 0.55rem 1.4rem;
+  background: var(--gradient);
+  color: #201202;
+  font-weight: 700;
+  border: none;
+  border-radius: 10px; padding: 0.55rem 1.4rem;
 }
-div[data-testid="stButton"] > button:hover { background: #ffbb55; color:#201202; }
-.back-btn button {
-  background: transparent !important; color: var(--text-dim) !important;
-  border: 1px solid var(--border) !important;
-}
+div[data-testid="stButton"] > button:hover { filter: brightness(1.08); color: #201202; }
 
-div[data-testid="stForm"], .panel {
-  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
-  padding: 1.4rem;
+/* sliders: force purple thumb/track, overriding any leftover theme orange */
+div[data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
+  background-color: var(--accent-purple) !important;
+  border-color: var(--accent-purple) !important;
+}
+div[data-testid="stSlider"] [data-baseweb="slider"] > div > div {
+  background: var(--accent-purple) !important;
 }
 
 /* gauge */
-.gauge-wrap { display:flex; justify-content:center; margin: 1rem 0; }
-.gauge {
-  width: 220px; height: 220px; border-radius: 50%;
-  display:flex; align-items:center; justify-content:center;
+.gauge-wrap { display:flex; justify-content:center; margin: 0.6rem 0; }
+.gauge-ring {
+    width: 220px; height: 220px; border-radius: 50%;
+    background: conic-gradient(var(--accent-purple) 0deg, var(--accent-yellow) calc(var(--fill-deg) * 1deg), var(--panel-2) calc(var(--fill-deg) * 1deg) 360deg);
+    /* --panel-2 (the unfilled track) is close in tone to the page's own
+       background gradient -- without an edge, the ring reads as a floating
+       arc rather than a full ring. A thin border makes the boundary legible
+       regardless of fill/backdrop contrast, without altering the conic-gradient. */
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
 }
 .gauge-inner {
   width: 168px; height: 168px; border-radius: 50%; background: var(--panel);
   display:flex; flex-direction:column; align-items:center; justify-content:center;
 }
-.gauge-num { font-family:'Space Grotesk', sans-serif; font-size: 2.3rem; font-weight:700; color: var(--accent); }
-.gauge-lbl { font-size: 0.75rem; color: var(--text-faint); }
+.gauge-num { font-family:'Space Grotesk', sans-serif; font-size: 2.3rem; font-weight:700; color: var(--accent-purple); }
+.gauge-lbl { font-size: 0.9rem; color: var(--text-faint); }
 
-.compare-row { margin-bottom: 0.9rem; }
-.compare-label { display:flex; justify-content:space-between; font-size:0.85rem; color: var(--text-dim); margin-bottom:4px; }
+.compare-row { margin-bottom: 0.6rem; }
+.compare-label { display:flex; justify-content:space-between; font-size:1.05rem; color: var(--text-dim); margin-bottom:4px; }
 .compare-track { background: var(--panel-2); border-radius: 8px; height: 10px; overflow:hidden; }
 .compare-fill { height: 100%; border-radius: 8px; }
 
-.footnote { color: var(--text-faint); font-size: 0.75rem; margin-top: 1.6rem; line-height:1.5; }
-.insight { background: var(--panel-2); border-left: 3px solid var(--accent-2); border-radius: 8px; padding: 0.8rem 1rem; margin: 1rem 0; font-size: 0.92rem; }
+.footnote { color: var(--text-faint); font-size: 0.85rem; margin-top: 1.1rem; line-height:1.5; }
+.insight { background: var(--panel-2); border-left: 3px solid var(--accent-purple); border-radius: 8px; padding: 0.7rem 1rem; margin: 0.7rem 0; font-size: 1.1rem; }
+/* self-contained insight cards used for the "In plain terms / Compared to similar
+   firms / Biggest driver / Next step / Keep in mind" breakdown -- each one is its
+   own card, not sub-sections of one big block */
+.insight-card { position: relative; background: var(--panel); border-radius: 10px; padding: 0.85rem 1.1rem 0.85rem 1.4rem; margin: 0.7rem 0; overflow: hidden; font-size: 1.1rem; line-height: 1.5; }
+.insight-card-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--gradient); }
+.chart-caption { font-size: 0.85rem; color: var(--text-faint); margin: -0.3rem 0 0.9rem; }
+
+/* hero */
+div.st-key-hero_wrap { text-align: center; padding: 1rem 0 0.3rem; }
+.hero-content { max-width: 680px; margin: 0 auto; text-align: center; }
+.hero-title {
+    background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; font-family: 'Space Grotesk', sans-serif;
+    font-size: 4rem; line-height: 1.1; font-weight: 700; margin-bottom: 0.6rem;
+    text-align: center;
+}
+.hero-sub { color: var(--text-dim); font-size: 1.5rem; margin-bottom: 1.5rem; }
+.hero-stats { display: flex; justify-content: center; gap: 2.8rem; margin-bottom: 1.2rem; }
+.hero-stat { text-align: center; }
+.hero-stat-icon { margin: 0 auto 0.35rem; display: block; }
+.hero-stat-num {
+    background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; font-family: 'Space Grotesk', sans-serif;
+    font-size: 2.2rem; font-weight: 700;
+}
+.hero-stat-label { font-size: 0.9rem; color: var(--text-faint); margin-top: 0.2rem; }
+.hero-divider { width: 80px; height: 3px; border-radius: 2px; background: var(--gradient); margin: 0 auto 1rem; }
+.hero-features { display: flex; justify-content: center; gap: 1.6rem; margin-bottom: 1.1rem; flex-wrap: wrap; }
+.hero-feature { font-size: 1rem; color: var(--text-dim); white-space: nowrap; }
+.hero-feature-check { color: var(--accent-purple); font-weight: 700; margin-right: 0.3rem; }
+.jump-link { display: inline-block; margin-top: 0.6rem; color: var(--text-dim); font-size: 0.85rem; text-decoration: none; border-bottom: 1px dashed var(--border); padding-bottom: 2px; }
+.jump-link:hover { color: var(--accent-purple); border-color: var(--accent-purple); }
+
+/* big centered CTA at the bottom of the input page */
+div.st-key-cta_wrap { display: flex; justify-content: center; margin: 1.6rem 0 1rem; }
+div.st-key-cta_wrap div[data-testid="stButton"] > button {
+    padding: 1rem 2.8rem !important; font-size: 1.25rem !important;
+}
+/* small outlined "back" button at the top of the results page */
+div.st-key-edit_wrap div[data-testid="stButton"] > button {
+    background: transparent !important; color: var(--text-dim) !important;
+    border: 1px solid var(--border) !important; font-weight: 600 !important;
+    padding: 0.45rem 1.1rem !important; font-size: 1rem !important;
+}
 </style>
 """
 
-st.markdown(CSS, unsafe_allow_html=True)
+st.html(CSS)
 
-# ---------------------------------------------------------------------------
-# Session state
-# ---------------------------------------------------------------------------
+_ICON_TARGET = """<svg class="hero-stat-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
+<circle cx="12" cy="12" r="9" stroke="#C77DFF" stroke-width="2"/><circle cx="12" cy="12" r="4" stroke="#C77DFF" stroke-width="2"/>
+</svg>"""
+_ICON_CHART = """<svg class="hero-stat-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
+<rect x="4" y="12" width="4" height="8" fill="#C77DFF"/><rect x="10" y="7" width="4" height="13" fill="#C77DFF"/><rect x="16" y="3" width="4" height="17" fill="#C77DFF"/>
+</svg>"""
+_ICON_CHECK = """<svg class="hero-stat-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
+<circle cx="12" cy="12" r="9" stroke="#C77DFF" stroke-width="2"/><path d="M8 12l3 3 5-6" stroke="#C77DFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>"""
 
-if "step" not in st.session_state:
-    st.session_state.step = 0
-if "answers" not in st.session_state:
-    st.session_state.answers = {}
+if "show_results" not in st.session_state:
+    st.session_state.show_results = False
+# Explicit persisted store for input values, independent of widget key state.
+# Streamlit does NOT reliably keep a widget's session_state[key] value when the
+# widget is omitted from one or more reruns and then re-instantiated later
+# (confirmed empirically: st.pills reset to its `default=` after a round trip
+# through the results page) -- so inputs are saved here on "See my results"
+# and fed back in as each widget's initial value on return, rather than relying
+# on Streamlit to remember them on its own.
+if "saved" not in st.session_state:
+    st.session_state.saved = {
+        "ai_tech": [], "ai_tasks": [], "finance_dig": 2, "customer_dig": 2,
+        "reskilling": 15, "idle_time": 10, "more_hours": 10,
+    }
 
+meta, _, _, _, _ = load_artifacts()
+total_firms = meta["n_train"] + meta["n_test"]
 
-def goto(i):
-    st.session_state.step = i
+# ===========================================================================
+# INPUT PAGE -- hero + all inputs. Hidden entirely once show_results is True.
+# ===========================================================================
 
+if not st.session_state.show_results:
 
-def render_dots():
-    content_steps = STEPS[1:]  # skip Intro in the dot bar
-    current = st.session_state.step
-    dots_html = '<div class="dots">'
-    for i in range(1, len(STEPS)):
-        cls = "dot"
-        if i < current:
-            cls += " done"
-        elif i == current:
-            cls += " active"
-        dots_html += f'<div class="{cls}"></div>'
-    dots_html += "</div>"
-    if current > 0:
-        st.markdown(dots_html, unsafe_allow_html=True)
+    with st.container(key="hero_wrap"):
+        st.html(f"""
+        <div class="hero-content">
+          <div class="hero-title">Your AI Productivity Edge</div>
+          <div class="hero-sub">A data-driven estimate of your firm's AI upside &mdash; built from a survey of {total_firms} Indian businesses.</div>
+          <div class="hero-stats">
+            <div class="hero-stat">{_ICON_TARGET}<div class="hero-stat-num">{meta['r2']:.2f}</div><div class="hero-stat-label">Test R&sup2;</div></div>
+            <div class="hero-stat">{_ICON_CHART}<div class="hero-stat-num">{total_firms}</div><div class="hero-stat-label">Firms</div></div>
+            <div class="hero-stat">{_ICON_CHECK}<div class="hero-stat-num">&plusmn;{meta['mae']:.1f}pp</div><div class="hero-stat-label">Typical error</div></div>
+          </div>
+          <div class="hero-divider"></div>
+          <div class="hero-features">
+            <div class="hero-feature"><span class="hero-feature-check">&#10003;</span>25 predictive features</div>
+            <div class="hero-feature"><span class="hero-feature-check">&#10003;</span>Instant estimate</div>
+            <div class="hero-feature"><span class="hero-feature-check">&#10003;</span>Built on real survey data</div>
+          </div>
+          <a class="jump-link" href="#get-started">&darr; Get started</a>
+        </div>
+        """)
 
+    saved = st.session_state.saved
 
-def header(title, subtitle):
-    st.markdown(f'<div class="step-title">{title}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="step-sub">{subtitle}</div>', unsafe_allow_html=True)
-
-
-def nav_buttons(back_to=None, next_label="Continue", on_next=None, next_disabled=False):
-    # Navigation uses on_click callbacks (not "if st.button(...): ...; st.rerun()")
-    # so the step change is applied before Streamlit's automatic post-click rerun,
-    # rather than forcing a second, nested rerun mid-script.
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        if back_to is not None:
-            st.markdown('<div class="back-btn">', unsafe_allow_html=True)
-            st.button("Back", key=f"back_{st.session_state.step}", on_click=goto, args=(back_to,))
-            st.markdown("</div>", unsafe_allow_html=True)
-    with c2:
-        st.button(
-            next_label, key=f"next_{st.session_state.step}", disabled=next_disabled,
-            on_click=(on_next if on_next else lambda: None),
+    st.html('<div id="get-started"></div><div class="section-heading">Your AI footprint</div><div class="section-sub">What AI tools and tasks are already part of your workflow?</div>')
+    with st.container(key="pills_wrap", gap=None):
+        st.pills(
+            "AI technologies in use",
+            ["Machine learning", "Chatbots", "AI agents", "Generative AI", "Automation", "Autonomous systems"],
+            selection_mode="multi", default=saved["ai_tech"],
+            help="Select all that apply", key="ai_tech_pills",
+        )
+        st.pills(
+            "Tasks AI is used for",
+            ["Finding info", "Summarizing", "Drafting", "Coding", "Translation", "Analysis", "Process control", "Customer interaction"],
+            selection_mode="multi", default=saved["ai_tasks"],
+            help="Select all that apply", key="ai_tasks_pills",
         )
 
+    st.html('<div class="section-heading">Digitization maturity</div><div class="section-sub">How advanced are these processes?</div>')
+    dig_col1, dig_col2 = st.columns(2)
+    with dig_col1:
+        st.slider(
+            "Finance / accounting digitization", 0, 7, saved["finance_dig"],
+            help="0 = none, 7 = fully digitized", key="finance_dig",
+        )
+    with dig_col2:
+        st.slider(
+            "Customer-facing digitization", 0, 8, saved["customer_dig"],
+            help="0 = none, 8 = fully digitized", key="customer_dig",
+        )
 
-# ---------------------------------------------------------------------------
-# Steps
-# ---------------------------------------------------------------------------
+    st.html('<div class="section-heading">What matters most</div><div class="section-sub">Capacity and reskilling needs</div>')
+    wm_col1, wm_col2 = st.columns(2)
+    with wm_col1:
+        st.slider("% of workforce needing reskilling", 0, 100, saved["reskilling"], key="reskilling")
+    with wm_col2:
+        st.slider("% of time production sits idle", 0, 100, saved["idle_time"], key="idle_time")
+    st.slider("% of workers wanting more hours", 0, 100, saved["more_hours"], key="more_hours")
 
+    with st.container(key="cta_wrap"):
+        if st.button("See my results →"):
+            st.session_state.saved = {
+                "ai_tech": st.session_state["ai_tech_pills"],
+                "ai_tasks": st.session_state["ai_tasks_pills"],
+                "finance_dig": st.session_state["finance_dig"],
+                "customer_dig": st.session_state["customer_dig"],
+                "reskilling": st.session_state["reskilling"],
+                "idle_time": st.session_state["idle_time"],
+                "more_hours": st.session_state["more_hours"],
+            }
+            st.session_state.show_results = True
+            st.rerun()
 
-def step_intro():
-    st.markdown('<div class="step-title">AI Productivity Estimator</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="step-sub">Estimate your firm\'s expected productivity gain from AI, '
-        "based on a survey of 986 Indian firms.</div>",
-        unsafe_allow_html=True,
-    )
-    st.write("Six short steps: firm profile, AI usage, digitization, operations, and policy.")
-    st.button("Start", on_click=goto, args=(1,))
+# ===========================================================================
+# RESULTS PAGE -- shown instead of (not alongside) the inputs.
+# ===========================================================================
 
+else:
+    with st.container(key="edit_wrap"):
+        if st.button("← Edit my inputs"):
+            st.session_state.show_results = False
+            st.rerun()
 
-def step_firm_profile():
-    render_dots()
-    header("Firm profile", "A few basics about your workforce")
-    a = st.session_state.answers
-    a["total_workers"] = st.number_input(
-        "Total workers", min_value=1, max_value=100000,
-        value=a.get("total_workers", 25), help="Total headcount at your firm",
-    )
-    a["pct_managers"] = st.slider("% managers", 0, 100, a.get("pct_managers", 10))
-    a["pct_professionals"] = st.slider("% professionals", 0, 100, a.get("pct_professionals", 15))
-    a["pct_clerical"] = st.slider("% clerical staff", 0, 100, a.get("pct_clerical", 10))
-    a["pct_admin"] = st.slider(
-        "% workers in admin roles", 0, 100, a.get("pct_admin", 10),
-        help="Share of staff in administrative/back-office functions",
-    )
-    a["has_website"] = st.segmented_control(
-        "Does your firm have a website?", ["No", "Yes"],
-        default=a.get("has_website", "Yes"), key="has_website_sc",
-    )
-    nav_buttons(back_to=0, on_next=lambda: goto(2))
+    # Widgets aren't instantiated on this page -- read the values captured into
+    # st.session_state.saved when "See my results" was clicked.
+    saved = st.session_state.saved
+    ai_tech = saved["ai_tech"]
+    ai_tasks = saved["ai_tasks"]
+    finance_digitization = saved["finance_dig"]
+    customer_digitization = saved["customer_dig"]
+    reskilling_pct = saved["reskilling"]
+    idle_time_pct = saved["idle_time"]
+    more_hours_pct = saved["more_hours"]
 
-
-def step_ai_usage():
-    render_dots()
-    header("AI usage", "How is AI used at your firm today?")
-    a = st.session_state.answers
-    a["pct_computer_use"] = st.slider(
-        "% of staff using computers", 0, 100, a.get("pct_computer_use", 40),
-    )
-    a["ai_tech"] = st.pills(
-        "AI technologies in use",
-        ["Machine learning", "Chatbots", "AI agents", "Generative AI", "Automation", "Autonomous systems"],
-        selection_mode="multi", default=a.get("ai_tech", []),
-        help="Select all that apply", key="ai_tech_pills",
-    )
-    a["ai_tasks"] = st.pills(
-        "Tasks AI is used for",
-        ["Finding info", "Summarizing", "Drafting", "Coding", "Translation", "Analysis", "Process control", "Customer interaction"],
-        selection_mode="multi", default=a.get("ai_tasks", []),
-        help="Select all that apply", key="ai_tasks_pills",
-    )
-    nav_buttons(back_to=1, on_next=lambda: goto(3))
-
-
-def step_digitization():
-    render_dots()
-    header("Digitization maturity", "How advanced is each process, on a 0-7 scale?")
-    a = st.session_state.answers
-    a["finance_digitization"] = st.slider(
-        "Finance / accounting digitization", 0, 7, a.get("finance_digitization", 2),
-        help="0 = none, 7 = fully digitized",
-    )
-    a["supplychain_digitization"] = st.slider(
-        "Supply chain digitization", 0, 7, a.get("supplychain_digitization", 2),
-        help="0 = none, 7 = fully digitized",
-    )
-    a["customer_digitization"] = st.slider(
-        "Customer-facing digitization", 0, 8, a.get("customer_digitization", 2),
-        help="0 = none, 8 = fully digitized",
-    )
-    nav_buttons(back_to=2, on_next=lambda: goto(4))
-
-
-def step_operations():
-    render_dots()
-    header("Operations & outlook", "Capacity, seasonality, and reskilling needs")
-    a = st.session_state.answers
-    a["idle_time_pct"] = st.slider("% of time production sits idle", 0, 100, a.get("idle_time_pct", 10))
-    a["more_hours_pct"] = st.slider(
-        "% of workers wanting more hours", 0, 100, a.get("more_hours_pct", 10),
-    )
-    a["can_absorb_shock"] = st.segmented_control(
-        "Could you absorb a sudden demand increase?", ["No", "Yes"],
-        default=a.get("can_absorb_shock", "Yes"), key="shock_sc",
-    )
-    c1, c2 = st.columns(2)
-    with c1:
-        a["peak_sales"] = st.number_input("Peak-season sales (₹L)", min_value=0.0, value=a.get("peak_sales", 10.0))
-        a["peak_workers"] = st.number_input("Peak-season workers", min_value=0, value=a.get("peak_workers", 25))
-    with c2:
-        a["low_sales"] = st.number_input("Low-season sales (₹L)", min_value=0.1, value=a.get("low_sales", 8.0))
-        a["low_workers"] = st.number_input("Low-season workers", min_value=1, value=a.get("low_workers", 22))
-    a["reskilling_pct"] = st.slider(
-        "% of workforce needing reskilling", 0, 100, a.get("reskilling_pct", 15),
-    )
-    nav_buttons(back_to=3, on_next=lambda: goto(5))
-
-
-def step_policy():
-    render_dots()
-    header("Policy support", "Government / institutional AI support your firm uses")
-    a = st.session_state.answers
-    a["policy_support"] = st.pills(
-        "Support programs used or aware of",
-        ["Funding", "Workforce training", "Tax incentives", "R&D support", "Advisory services", "Graduate skills programs"],
-        selection_mode="multi", default=a.get("policy_support", []),
-        help="Select all that apply", key="policy_pills",
-    )
-    nav_buttons(back_to=4, next_label="See my result", on_next=lambda: goto(6))
-
-
-def step_result():
-    a = st.session_state.answers
-
-    sales_ratio = min((a["peak_sales"] / max(a["low_sales"], 1e-6)), 20)
-    worker_ratio = min((a["peak_workers"] / max(a["low_workers"], 1e-6)), 20)
-
-    ai_tech = a.get("ai_tech", [])
-    ai_tasks = a.get("ai_tasks", [])
-    policy = a.get("policy_support", [])
+    d = DEFAULTS
+    sales_ratio = min((d["peak_sales"] / max(d["low_sales"], 1e-6)), 20)
+    worker_ratio = min((d["peak_workers"] / max(d["low_workers"], 1e-6)), 20)
 
     features = {
-        "reskilling_need_share": a["reskilling_pct"] / 100,
-        "workers_wanting_more_hours_share": a["more_hours_pct"] / 100,
-        "idle_time_share": a["idle_time_pct"] / 100,
-        "admin_worker_share": a["pct_admin"] / 100,
-        "share_clerical": a["pct_clerical"] / 100,
+        "reskilling_need_share": reskilling_pct / 100,
+        "workers_wanting_more_hours_share": more_hours_pct / 100,
+        "idle_time_share": idle_time_pct / 100,
+        "admin_worker_share": d["pct_admin"] / 100,
+        "share_clerical": d["pct_clerical"] / 100,
         "sales_seasonality_ratio": sales_ratio,
-        "policy_support_score": len(policy),
+        "policy_support_score": len(d["policy_support"]),
         "ai_b3a3_flag": int("Drafting" in ai_tasks),
-        "share_professionals": a["pct_professionals"] / 100,
+        "share_professionals": d["pct_professionals"] / 100,
         "ai_b2a4_flag": int("Generative AI" in ai_tech),
-        "share_managers": a["pct_managers"] / 100,
+        "share_managers": d["pct_managers"] / 100,
         "worker_seasonality_ratio": worker_ratio,
         "uses_genai": int("Generative AI" in ai_tech),
-        "share_computer_use": a["pct_computer_use"] / 100,
-        "log_workers": np.log1p(a["total_workers"]),
+        "share_computer_use": d["pct_computer_use"] / 100,
+        "log_workers": np.log1p(d["total_workers"]),
         "task_breadth": len(ai_tasks),
-        "finance_digitization": a["finance_digitization"],
-        "ai_g1b_flag": int("Workforce training" in policy),
-        "customer_digitization": a["customer_digitization"],
+        "finance_digitization": finance_digitization,
+        "ai_g1b_flag": int("Workforce training" in d["policy_support"]),
+        "customer_digitization": customer_digitization,
         "ai_b3a2_flag": int("Summarizing" in ai_tasks),
-        "can_absorb_demand_shock": int(a["can_absorb_shock"] == "Yes"),
-        "supplychain_digitization": a["supplychain_digitization"],
+        "can_absorb_demand_shock": int(d["can_absorb_shock"] == "Yes"),
+        "supplychain_digitization": d["supplychain_digitization"],
         "ai_breadth_score": len(ai_tech),
-        "ai_g1f_flag": int("Graduate skills programs" in policy),
-        "has_website": int(a["has_website"] == "Yes"),
+        "ai_g1f_flag": int("Graduate skills programs" in d["policy_support"]),
+        "has_website": int(d["has_website"] == "Yes"),
     }
 
     pred, meta = predict(features)
 
-    header("Your estimate", "Expected AI-driven productivity increase")
+    with st.container(key="hero_wrap"):
+        st.html(f"""
+        <div class="hero-content">
+          <div class="hero-title">Your Result Is In</div>
+          <div class="hero-sub">Based on what you told us, here's your AI productivity estimate.</div>
+          <div class="hero-stats">
+            <div class="hero-stat">{_ICON_TARGET}<div class="hero-stat-num">{meta['r2']:.2f}</div><div class="hero-stat-label">Test R&sup2;</div></div>
+            <div class="hero-stat">{_ICON_CHART}<div class="hero-stat-num">{total_firms}</div><div class="hero-stat-label">Firms</div></div>
+            <div class="hero-stat">{_ICON_CHECK}<div class="hero-stat-num">&plusmn;{meta['mae']:.1f}pp</div><div class="hero-stat-label">Typical error</div></div>
+          </div>
+          <div class="hero-divider"></div>
+        </div>
+        """)
 
     frac = min(pred / SCALE_MAX, 1.0)
-    angle = frac * 360
-    gauge_html = f"""
+    fill_deg = frac * 360
+    st.html(f"""
     <div class="gauge-wrap">
-      <div class="gauge" style="background: conic-gradient(var(--accent) {angle}deg, var(--panel-2) {angle}deg);">
+      <div class="gauge-ring" style="--fill-deg: {fill_deg};">
         <div class="gauge-inner">
           <div class="gauge-num">{pred:.1f}%</div>
           <div class="gauge-lbl">of {SCALE_MAX}% scale</div>
         </div>
       </div>
     </div>
-    """
-    st.markdown(gauge_html, unsafe_allow_html=True)
+    """)
 
     you_pct = min(pred / SCALE_MAX, 1.0) * 100
     avg_pct = min(SAMPLE_AVERAGE / SCALE_MAX, 1.0) * 100
-    compare_html = f"""
+    st.html(f"""
     <div class="compare-row">
       <div class="compare-label"><span>Your firm</span><span>{pred:.1f}%</span></div>
-      <div class="compare-track"><div class="compare-fill" style="width:{you_pct}%; background: var(--accent);"></div></div>
+      <div class="compare-track"><div class="compare-fill" style="width:{you_pct}%; background: var(--accent-purple);"></div></div>
     </div>
     <div class="compare-row">
       <div class="compare-label"><span>Sample average</span><span>{SAMPLE_AVERAGE:.1f}%</span></div>
-      <div class="compare-track"><div class="compare-fill" style="width:{avg_pct}%; background: var(--accent-2);"></div></div>
+      <div class="compare-track"><div class="compare-fill" style="width:{avg_pct}%; background: var(--accent-purple);"></div></div>
     </div>
-    """
-    st.markdown(compare_html, unsafe_allow_html=True)
+    """)
 
     if pred > SAMPLE_AVERAGE * 1.15:
-        insight = "Your firm's AI usage and digital maturity point to above-average expected gains."
+        insight = "You're ahead of the curve &mdash; your AI usage and digitization point to above-average gains."
     elif pred < SAMPLE_AVERAGE * 0.85:
-        insight = "Your firm's profile suggests below-average expected gains -- broader AI/digitization adoption may help."
+        insight = "There's room to grow &mdash; broader AI and digitization adoption could lift this estimate."
     else:
-        insight = "Your firm's expected gains are roughly in line with the sample average."
-    st.markdown(f'<div class="insight">{insight}</div>', unsafe_allow_html=True)
+        insight = "Right in line with the pack &mdash; your estimate tracks close to the sample average."
+    st.html(f'<div class="insight">{insight}</div>')
 
-    st.markdown(
+    # --- What drove this result: z-score of each input vs. the training sample,
+    # weighted by that feature's permutation importance on the deployed model ---
+    _, feature_names, _, scaler, _ = load_artifacts()
+    imp_map = load_permutation_importance()
+    sample_df = load_modeling_sample()
+
+    means = dict(zip(feature_names, scaler.mean_))
+    stds = dict(zip(feature_names, scaler.scale_))
+    contributions = []
+    for f in feature_names:
+        val = features.get(f, np.nan)
+        std = stds[f] if stds[f] > 0 else 1.0
+        z = (val - means[f]) / std
+        contributions.append((f, z * imp_map.get(f, 0.0)))
+    contributions.sort(key=lambda x: abs(x[1]), reverse=True)
+    top5 = contributions[:5]
+
+    st.html('<div class="section-heading">What drove your result</div><div class="section-sub">Your top inputs, weighted by how much this model relies on each one</div>')
+    labels = [feature_label(f) for f, _ in reversed(top5)]
+    vals = [v for _, v in reversed(top5)]
+    # color by direction, not rank: purple = pulled the estimate down (negative),
+    # yellow = pushed it up (positive) -- makes the color meaningful rather than decorative
+    bar_colors = ["#FFD966" if v >= 0 else "#C77DFF" for v in vals]
+    fig1, ax1 = plt.subplots(figsize=(6.4, 2.1))
+    fig1.patch.set_facecolor("#0D0F26")
+    ax1.set_facecolor("#0D0F26")
+    ax1.barh(labels, vals, color=bar_colors)
+    ax1.axvline(0, color="#8C8FC0", linewidth=0.8)
+    ax1.tick_params(colors="#C2C4E8", labelsize=9)
+    for spine in ax1.spines.values():
+        spine.set_visible(False)
+    ax1.set_xlabel("Pull on your estimate", color="#C2C4E8", fontsize=9)
+    fig1.tight_layout()
+    st.pyplot(fig1)
+    plt.close(fig1)
+    st.html('<div class="chart-caption">Bars extending left pulled your estimate down; bars extending right pushed it up. Longer bars = bigger effect.</div>')
+
+    # --- Where you land in the full sample's distribution ---
+    st.html('<div class="section-heading">Where you land</div><div class="section-sub">Your estimate against all 986 firms\' expected gains</div>')
+    fig2, ax2 = plt.subplots(figsize=(6.4, 1.8))
+    fig2.patch.set_facecolor("#0D0F26")
+    ax2.set_facecolor("#0D0F26")
+    ax2.hist(sample_df["ai_f2a2"], bins=20, color="#C77DFF", alpha=0.75, edgecolor="#0D0F26")
+    ax2.axvline(pred, color="#FFD966", linewidth=2.2)
+    ax2.annotate(
+        f"You: {pred:.1f}%", xy=(pred, ax2.get_ylim()[1]), xytext=(5, -12),
+        textcoords="offset points", color="#FFD966", fontsize=9, fontweight="bold",
+    )
+    ax2.tick_params(colors="#C2C4E8", labelsize=9)
+    ax2.set_yticks([])
+    for spine in ax2.spines.values():
+        spine.set_visible(False)
+    ax2.set_xlabel("Expected productivity increase (%)", color="#C2C4E8", fontsize=9)
+    fig2.tight_layout()
+    st.pyplot(fig2)
+    plt.close(fig2)
+    st.html('<div class="chart-caption">Each bar shows how many firms in the sample landed at that expected gain &mdash; your result is marked in yellow.</div>')
+
+    # --- Peer comparison + single biggest driver ---
+    user_breadth = len(ai_tech)
+    peer_mask = (sample_df["ai_breadth_score"] - user_breadth).abs() <= 1
+    peer_n = int(peer_mask.sum())
+    if peer_n > 0:
+        peer_mean = sample_df.loc[peer_mask, "ai_f2a2"].mean()
+        vs_word = "above" if pred > peer_mean else "below" if pred < peer_mean else "in line with"
+        peer_line = (
+            f"Among the {peer_n} firms using a similar breadth of AI technology "
+            f"({user_breadth} in use), the average expected gain is {peer_mean:.1f}% "
+            f"&mdash; your estimate is {vs_word} that peer group."
+        )
+    else:
+        peer_line = ""
+
+    top_feature, top_contrib = top5[0]
+    direction = "pushed it up" if top_contrib > 0 else "pulled it down"
+    driver_line = (
+        f"Of everything you entered, <strong>{feature_label(top_feature)}</strong> had the single "
+        f"biggest pull on your result &mdash; it {direction} the most relative to a typical firm."
+    )
+
+    # --- Conclusion ---
+    if idle_time_pct >= 20:
+        next_step = (
+            f"Your biggest lever is probably not AI itself: at {idle_time_pct}% idle production time, "
+            "closing that gap would likely do more for realized productivity than any AI tool alone."
+        )
+    elif len(ai_tech) <= 1:
+        next_step = (
+            "Your AI usage is still narrow. Broadening into more of the technologies above "
+            "&mdash; generative AI in particular &mdash; is the input most associated with higher estimates in this model."
+        )
+    elif more_hours_pct >= 20:
+        next_step = (
+            f"With {more_hours_pct}% of your workforce wanting more hours, redeploying that latent "
+            "capacity toward AI-assisted tasks could compound your gains."
+        )
+    else:
+        next_step = (
+            "Your inputs are already fairly strong across the board &mdash; from here, gains likely "
+            "come from deepening digitization maturity rather than broader AI adoption."
+        )
+
+    plain_terms = (
+        f"Based on what you entered, this model expects your firm's productivity to rise by "
+        f"about {pred:.1f}% as AI adoption continues at its current pace &mdash; "
+        f"{'above' if pred > SAMPLE_AVERAGE else 'below' if pred < SAMPLE_AVERAGE else 'in line with'} "
+        f"the {SAMPLE_AVERAGE:.0f}% average across the surveyed firms."
+    )
+    keep_in_mind = (
+        f"This is built on firms' self-reported expectations, not measured outcomes, and typically "
+        f"lands within &plusmn;{meta['mae']:.1f} percentage points of what the model would predict "
+        f"for a firm like yours in the survey."
+    )
+
+    cards = [("In plain terms", plain_terms)]
+    if peer_line:
+        cards.append(("Compared to similar firms", peer_line))
+    cards.append(("Biggest driver", driver_line))
+    cards.append(("Next step", next_step))
+    cards.append(("Keep in mind", keep_in_mind))
+
+    for label, text in cards:
+        st.html(f"""
+        <div class="insight-card">
+          <div class="insight-card-bar"></div>
+          <strong>{label}:</strong> {text}
+        </div>
+        """)
+
+    st.html(
         f"""<div class="footnote">
         Model: {meta['model_name']} &middot; Test R2 = {meta['r2']:.3f} &middot;
         RMSE = {meta['rmse']:.2f} &middot; MAE = {meta['mae']:.2f} &middot;
         trained on {meta['n_train']} firms, evaluated on {meta['n_test']} held-out firms.<br>
         The prediction reflects each firm's <em>self-reported expectation</em> of AI-driven
         productivity gains, not a measured outcome -- treat it as directional, not exact.
-        </div>""",
-        unsafe_allow_html=True,
+        </div>"""
     )
-
-    nav_buttons(back_to=5, next_label="Start over", on_next=lambda: (st.session_state.answers.clear(), goto(0)))
-
-
-# ---------------------------------------------------------------------------
-# Router
-# ---------------------------------------------------------------------------
-
-STEP_FUNCS = [
-    step_intro,
-    step_firm_profile,
-    step_ai_usage,
-    step_digitization,
-    step_operations,
-    step_policy,
-    step_result,
-]
-
-STEP_FUNCS[st.session_state.step]()

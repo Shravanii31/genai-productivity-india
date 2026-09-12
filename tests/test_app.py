@@ -1,61 +1,72 @@
-"""Headless smoke test for app/app.py using streamlit.testing.v1.AppTest."""
+"""Headless smoke test for app/app.py using streamlit.testing.v1.AppTest.
+
+Two distinct views behind a single session_state.show_results flag:
+input page (hero + AI footprint + digitization + what matters most + "See my
+results" CTA) -> results page (gauge + charts + summary, with "Edit my inputs"
+to go back). Inputs and results are never both visible at once.
+"""
 from streamlit.testing.v1 import AppTest
 
 at = AppTest.from_file("app/app.py", default_timeout=30)
 at.run()
-assert not at.exception, f"Exception on intro step: {at.exception}"
-print("Step 0 (Intro) OK")
+assert not at.exception, f"Exception on initial render: {at.exception}"
+print("Initial render OK")
 
-at.button[0].click().run()
-assert not at.exception, f"Exception after clicking Start: {at.exception}"
-print("Step 1 (Firm Profile) OK -- widgets:", len(at.slider) + len(at.number_input))
+# Input page: all inputs present, no results yet, no "Edit" button
+assert len(at.pills) == 2, f"Expected 2 pills widgets, found {len(at.pills)}"
+assert len(at.slider) == 5, f"Expected 5 sliders, found {len(at.slider)}"
+cta = [b for b in at.button if "See my results" in b.label]
+assert len(cta) == 1, f"Expected one 'See my results' button, found {len(cta)}"
+edit_btn = [b for b in at.button if "Edit my inputs" in b.label]
+assert len(edit_btn) == 0, "Edit button should not exist on the input page"
+print(f"Input page OK: {len(at.pills)} pills, {len(at.slider)} sliders, CTA present, no Edit button")
 
-# Exercise real interactivity: move a slider and flip the segmented control
-at.slider[0].set_value(80).run()
-assert not at.exception, f"Exception setting slider: {at.exception}"
-at.segmented_control[0].set_value("No").run()
-assert not at.exception, f"Exception setting segmented_control: {at.exception}"
-print("Interacted with slider + segmented_control OK")
 
-# Step 1: Firm Profile -> Continue
-next_btn = [b for b in at.button if b.label == "Continue"][0]
-next_btn.click().run()
-assert not at.exception, f"Exception after Firm Profile: {at.exception}"
-print("Step 2 (AI Usage) OK")
+def walk(node):
+    children = getattr(node, "children", None)
+    if children:
+        for c in children.values():
+            yield c
+            yield from walk(c)
 
-# Step 2: AI Usage -- exercise the pills multi-select widgets
-assert len(at.pills) >= 2, f"Expected 2 pills widgets, found {len(at.pills)}"
+
+def has_gauge():
+    for node in walk(at.main):
+        body = getattr(getattr(node, "proto", None), "body", "")
+        if 'gauge-num">' in body and "%" in body:
+            return True
+    return False
+
+
+assert not has_gauge(), "Result gauge should not render on the input page"
+
+# Set some non-default values before switching pages, to confirm they persist
 at.pills[0].set_value(["Generative AI", "Machine learning"]).run()
-assert not at.exception, f"Exception setting AI-tech pills: {at.exception}"
 at.pills[1].set_value(["Summarizing", "Drafting"]).run()
-assert not at.exception, f"Exception setting AI-task pills: {at.exception}"
-print("Pills interaction OK:", at.pills[0].value, at.pills[1].value)
-next_btn = [b for b in at.button if b.label == "Continue"][0]
-next_btn.click().run()
-assert not at.exception, f"Exception after AI Usage: {at.exception}"
-print("Step 3 (Digitization) OK")
+at.slider[2].set_value(40).run()  # reskilling
+assert not at.exception, f"Exception interacting with inputs: {at.exception}"
+print("Set non-default input values OK")
 
-next_btn = [b for b in at.button if b.label == "Continue"][0]
-next_btn.click().run()
-assert not at.exception, f"Exception after Digitization: {at.exception}"
-print("Step 4 (Operations) OK")
+cta[0].click().run()
+assert not at.exception, f"Exception after clicking 'See my results': {at.exception}"
+print("Clicked 'See my results' OK")
 
-next_btn = [b for b in at.button if b.label == "Continue"][0]
-next_btn.click().run()
-assert not at.exception, f"Exception after Operations: {at.exception}"
-print("Step 5 (Policy) OK")
+# Results page: inputs are gone entirely, gauge is present, Edit button is present
+assert len(at.pills) == 0, f"Pills should be hidden on the results page, found {len(at.pills)}"
+assert len(at.slider) == 0, f"Sliders should be hidden on the results page, found {len(at.slider)}"
+assert has_gauge(), "No prediction number found on the results page"
+edit_btn = [b for b in at.button if "Edit my inputs" in b.label]
+assert len(edit_btn) == 1, f"Expected one 'Edit my inputs' button, found {len(edit_btn)}"
+cta_gone = [b for b in at.button if "See my results" in b.label]
+assert len(cta_gone) == 0, "'See my results' button should not exist on the results page"
+print("Results page OK: inputs hidden, gauge rendered, Edit button present")
 
-next_btn = [b for b in at.button if b.label == "See my result"][0]
-next_btn.click().run()
-assert not at.exception, f"Exception reaching Result: {at.exception}"
-print("Step 6 (Result) OK")
+# Go back and confirm inputs retained their previously-set values (not reset)
+edit_btn[0].click().run()
+assert not at.exception, f"Exception after clicking 'Edit my inputs': {at.exception}"
+assert len(at.pills) == 2 and len(at.slider) == 5, "Inputs should reappear after going back"
+assert at.pills[0].value == ["Generative AI", "Machine learning"], f"Pills value not retained: {at.pills[0].value}"
+assert at.slider[2].value == 40, f"Slider value not retained: {at.slider[2].value}"
+print("Back on input page OK: previous values retained, not reset")
 
-# Confirm a real prediction number rendered
-found_pct = False
-for md in at.markdown:
-    if "gauge-num" in md.value and "%" in md.value:
-        found_pct = True
-        print("Found prediction markup:", [line for line in md.value.splitlines() if "gauge-num" in line])
-assert found_pct, "No prediction number found on result screen"
-
-print("\nALL STEPS PASSED -- no exceptions, prediction rendered.")
+print("\nALL CHECKS PASSED.")
