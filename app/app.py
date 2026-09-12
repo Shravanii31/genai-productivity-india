@@ -230,6 +230,7 @@ div[data-testid="stSlider"] [data-baseweb="slider"] > div > div {
    own card, not sub-sections of one big block */
 .insight-card { position: relative; background: var(--panel); border-radius: 10px; padding: 0.85rem 1.1rem 0.85rem 1.4rem; margin: 0.7rem 0; overflow: hidden; font-size: 1.1rem; line-height: 1.5; }
 .insight-card-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--gradient); }
+.insight-card-note { color: var(--text-faint); font-size: 0.85rem; margin-top: 0.4rem; line-height: 1.4; }
 .chart-caption { font-size: 0.85rem; color: var(--text-faint); margin: -0.3rem 0 0.9rem; }
 
 /* hero */
@@ -262,7 +263,7 @@ div.st-key-hero_wrap { text-align: center; padding: 1rem 0 0.3rem; }
    the results-page hero, which still uses the base .hero-* sizing above via its
    own div.st-key-hero_wrap container. These overrides win on specificity
    (container class + element class) without touching the shared base rules. */
-div.st-key-intro_hero_wrap { padding: 2rem 0 1.1rem; }
+div.st-key-intro_hero_wrap { padding: 2rem 0 0.7rem; }
 div.st-key-intro_hero_wrap .hero-content { max-width: 720px; }
 /* Max bound kept below the ~3.8rem originally tried -- at that size "Your AI
    Productivity Edge" overflowed the 720px container and got clipped by
@@ -273,7 +274,7 @@ div.st-key-intro_hero_wrap .hero-sub { font-size: clamp(0.95rem, 2.3vw, 1.15rem)
 div.st-key-intro_hero_wrap .hero-stats { gap: 3.4rem; margin-bottom: 1.6rem; }
 div.st-key-intro_hero_wrap .hero-stat-num { font-size: 3.1rem; }
 div.st-key-intro_hero_wrap .hero-stat-label { font-size: 1rem; }
-div.st-key-intro_hero_wrap .hero-features { gap: 1.9rem; margin-bottom: 1.3rem; }
+div.st-key-intro_hero_wrap .hero-features { gap: 1.9rem; margin-bottom: 0.85rem; }
 div.st-key-intro_hero_wrap .hero-feature { font-size: 1.1rem; }
 
 /* "About" block -- 5 explanatory sections between the hero and the first input
@@ -358,7 +359,7 @@ if st.session_state.page == "intro":
           <div class="hero-stats">
             <div class="hero-stat">{_ICON_TARGET}<div class="hero-stat-num">{meta['r2']:.2f}</div><div class="hero-stat-label">Test R&sup2;</div></div>
             <div class="hero-stat">{_ICON_CHART}<div class="hero-stat-num">{total_firms}</div><div class="hero-stat-label">Firms</div></div>
-            <div class="hero-stat">{_ICON_CHECK}<div class="hero-stat-num">&plusmn;{meta['mae']:.1f}pp</div><div class="hero-stat-label">Typical error</div></div>
+            <div class="hero-stat">{_ICON_CHECK}<div class="hero-stat-num">{meta['mae']:.1f}pp</div><div class="hero-stat-label">Average absolute error</div></div>
           </div>
           <div class="hero-divider"></div>
           <div class="hero-features">
@@ -373,7 +374,7 @@ if st.session_state.page == "intro":
     # About block -- 5 explanatory sections, below the hero on this same page.
     # -----------------------------------------------------------------------
 
-    flow_steps = ["Your inputs", "Data preprocessing", "Trained model", "Productivity estimate"]
+    flow_steps = ["Your inputs", "Preprocessing", "25 features", "Extra Trees model", "Expected productivity gain"]
     flow_html = '<div class="about-flow">'
     for i, step in enumerate(flow_steps):
         step_cls = "about-flow-step alt" if i % 2 == 1 else "about-flow-step"
@@ -384,31 +385,33 @@ if st.session_state.page == "intro":
 
     st.html("""
     <div class="about-heading">What is this project?</div>
-    <div class="about-card">This project uses statistical and machine learning techniques to
-    estimate how AI adoption can influence business productivity. By analysing data from 986
-    Indian businesses, the model identifies patterns between AI usage, workforce characteristics,
-    business practices, and productivity outcomes.</div>
+    <div class="about-card">This project uses machine learning and statistical regression
+    techniques to estimate a firm's expected productivity gain from AI adoption. The model
+    analyses data from 986 Indian firms across AI adoption, workforce characteristics, digital
+    maturity, and operating conditions to identify patterns associated with firms' expected
+    productivity gains.</div>
     """)
 
     st.html(f"""
     <div class="about-heading">How does the model work?</div>
-    <div class="about-card">The model analyses multiple business and AI-related factors to
-    generate an estimated productivity outcome. Users provide information about their
-    organisation, AI adoption, workforce, and business practices. These inputs are processed by
-    the trained model to produce an instant estimate.
+    <div class="about-card">Your responses are processed through the same preprocessing
+    pipeline used during model development. The model then evaluates 25 predictive features
+    covering AI usage, task breadth, digitization maturity, workforce characteristics, and
+    operating conditions before generating an estimate of your firm's expected productivity gain.
     {flow_html}
     </div>
     """)
 
     st.html(f"""
     <div class="about-heading">About the dataset</div>
-    <div class="about-card">The analysis is based on survey data collected from {total_firms}
-    Indian businesses. The dataset captures information related to AI adoption, business
-    operations, workforce characteristics, technology usage, and organisational practices.
+    <div class="about-card">The study uses a stratified survey of 1,355 Indian firms. After
+    filtering for valid responses to the expected productivity-gain measure, {total_firms} firms
+    were retained for modelling. The dataset captures information on AI adoption, workforce
+    composition, digitization maturity, firm characteristics, and operating conditions.
     <div class="about-stats">
-      <div class="hero-stat"><div class="hero-stat-num">{total_firms}</div><div class="hero-stat-label">Businesses surveyed</div></div>
+      <div class="hero-stat"><div class="hero-stat-num">1,355</div><div class="hero-stat-label">Firms surveyed</div></div>
+      <div class="hero-stat"><div class="hero-stat-num">{total_firms}</div><div class="hero-stat-label">Valid modelling responses</div></div>
       <div class="hero-stat"><div class="hero-stat-num">25</div><div class="hero-stat-label">Predictive features</div></div>
-      <div class="hero-stat"><div class="hero-stat-num">India</div><div class="hero-stat-label">Survey coverage</div></div>
     </div>
     </div>
     """)
@@ -423,16 +426,78 @@ if st.session_state.page == "intro":
 
     st.html(f"""
     <div class="about-heading">Understanding the model performance</div>
-    <div class="about-card">The model achieves a test R&sup2; of <span class="stat-highlight">{meta['r2']:.2f}</span>,
-    meaning it explains a substantial share of the variation in the observed productivity outcome.
-    The typical prediction error is approximately <span class="stat-highlight">&plusmn;{meta['mae']:.1f} percentage points</span>,
-    providing an indication of the uncertainty around individual estimates.</div>
+    <div class="about-card">The deployed Extra Trees model achieves a test R&sup2; of
+    <span class="stat-highlight">{meta['r2']:.2f}</span>, indicating that it explains a substantial
+    share of the variation in firms' reported expected productivity gains.</div>
     """)
 
+    # -----------------------------------------------------------------------
+    # Section 6: What does the research show? -- model comparison table.
+    # -----------------------------------------------------------------------
+    st.html("""
+    <div class="about-heading">What does the research show?</div>
+    <div class="about-card">Ten regression approaches were compared, spanning linear models,
+    tuned tree ensembles, a stacking ensemble, and two deep-learning architectures. The deployed
+    Extra Trees model achieved the strongest result.</div>
+    """)
+    comparison_df = pd.DataFrame({
+        "Model": [
+            "Extra Trees (deployed)", "Stacking", "Random Forest", "Gradient Boosting",
+            "Linear Regression", "Ridge", "Lasso", "Feedforward Neural Network",
+            "Wide & Deep Hybrid", "Mean baseline",
+        ],
+        "Test R²": [0.621, 0.621, 0.617, 0.607, 0.481, 0.480, 0.487, 0.465, 0.395, -0.003],
+    })
+
+    def _highlight_winner(row):
+        if row["Model"] == "Extra Trees (deployed)":
+            return ["background-color: #232750; color: #C77DFF; font-weight: 700;"] * len(row)
+        return [""] * len(row)
+
+    styled_comparison = comparison_df.style.apply(_highlight_winner, axis=1).format({"Test R²": "{:.3f}"})
+    st.dataframe(styled_comparison, hide_index=True, width="stretch")
+
+    # -----------------------------------------------------------------------
+    # Section: Key research finding.
+    # -----------------------------------------------------------------------
+    st.html("""
+    <div class="about-heading">Key research finding</div>
+    <div class="about-card">
+    <strong class="stat-highlight" style="font-size: 1.05em;">AI adoption isn't the whole story.</strong><br><br>
+    Our analysis suggests that firms' expected productivity gains are strongly associated with
+    their existing operating conditions. Factors such as reskilling needs and underutilised
+    production capacity were stronger predictors than AI adoption breadth alone.
+    <div class="about-stats">
+      <div class="hero-stat"><div class="hero-stat-num">0.128</div><div class="hero-stat-label">Reskilling need (&Delta;R&sup2;)</div></div>
+      <div class="hero-stat"><div class="hero-stat-num">0.098</div><div class="hero-stat-label">Workers wanting more hours (&Delta;R&sup2;)</div></div>
+      <div class="hero-stat"><div class="hero-stat-num">0.072</div><div class="hero-stat-label">Idle production time (&Delta;R&sup2;)</div></div>
+    </div>
+    </div>
+    """)
+
+    # -----------------------------------------------------------------------
+    # Section 7: About the research -- paper citation + summary stats. Final
+    # section on this page, directly above the button into the input form.
+    # -----------------------------------------------------------------------
+    st.html("""
+    <div class="about-heading">About the research</div>
+    <div class="about-card">This application accompanies the research paper "Predicting Firms'
+    Expected Productivity Gains from Generative AI: A Machine Learning and Deep Learning
+    Comparison Using Indian Firm-Level Data."
+    <div class="about-stats">
+      <div class="hero-stat"><div class="hero-stat-num">986 / 1,355</div><div class="hero-stat-label">Valid responses / surveyed firms</div></div>
+      <div class="hero-stat"><div class="hero-stat-num">25</div><div class="hero-stat-label">Validated predictors</div></div>
+      <div class="hero-stat"><div class="hero-stat-num">10</div><div class="hero-stat-label">Models compared (ML + DL)</div></div>
+      <div class="hero-stat"><div class="hero-stat-num">Extra Trees</div><div class="hero-stat-label">Deployed model (R&sup2; = 0.621)</div></div>
+    </div>
+    </div>
+    """)
+
+    def _go_to_inputs():
+        st.session_state.page = "inputs"
+
     with st.container(key="cta_wrap"):
-        if st.button("Get started →"):
-            st.session_state.page = "inputs"
-            st.rerun()
+        st.button("Get started →", on_click=_go_to_inputs)
 
 # ===========================================================================
 # PAGE 2: INPUTS -- all input sections. Only shows while page == "inputs".
@@ -440,10 +505,11 @@ if st.session_state.page == "intro":
 
 elif st.session_state.page == "inputs":
 
+    def _go_to_intro():
+        st.session_state.page = "intro"
+
     with st.container(key="edit_wrap"):
-        if st.button("← Back"):
-            st.session_state.page = "intro"
-            st.rerun()
+        st.button("← Back", on_click=_go_to_intro)
 
     saved = st.session_state.saved
 
@@ -483,29 +549,31 @@ elif st.session_state.page == "inputs":
         st.slider("% of time production sits idle", 0, 100, saved["idle_time"], key="idle_time")
     st.slider("% of workers wanting more hours", 0, 100, saved["more_hours"], key="more_hours")
 
+    def _go_to_results():
+        st.session_state.saved = {
+            "ai_tech": st.session_state["ai_tech_pills"],
+            "ai_tasks": st.session_state["ai_tasks_pills"],
+            "finance_dig": st.session_state["finance_dig"],
+            "customer_dig": st.session_state["customer_dig"],
+            "reskilling": st.session_state["reskilling"],
+            "idle_time": st.session_state["idle_time"],
+            "more_hours": st.session_state["more_hours"],
+        }
+        st.session_state.page = "results"
+
     with st.container(key="cta_wrap"):
-        if st.button("See my results →"):
-            st.session_state.saved = {
-                "ai_tech": st.session_state["ai_tech_pills"],
-                "ai_tasks": st.session_state["ai_tasks_pills"],
-                "finance_dig": st.session_state["finance_dig"],
-                "customer_dig": st.session_state["customer_dig"],
-                "reskilling": st.session_state["reskilling"],
-                "idle_time": st.session_state["idle_time"],
-                "more_hours": st.session_state["more_hours"],
-            }
-            st.session_state.page = "results"
-            st.rerun()
+        st.button("See my results →", on_click=_go_to_results)
 
 # ===========================================================================
 # PAGE 3: RESULTS -- shown instead of (not alongside) the other two pages.
 # ===========================================================================
 
 elif st.session_state.page == "results":
+    def _go_back_to_inputs():
+        st.session_state.page = "inputs"
+
     with st.container(key="edit_wrap"):
-        if st.button("← Edit my inputs"):
-            st.session_state.page = "inputs"
-            st.rerun()
+        st.button("← Edit my inputs", on_click=_go_back_to_inputs)
 
     # Widgets aren't instantiated on this page -- read the values captured into
     # st.session_state.saved when "See my results" was clicked.
@@ -560,7 +628,7 @@ elif st.session_state.page == "results":
           <div class="hero-stats">
             <div class="hero-stat">{_ICON_TARGET}<div class="hero-stat-num">{meta['r2']:.2f}</div><div class="hero-stat-label">Test R&sup2;</div></div>
             <div class="hero-stat">{_ICON_CHART}<div class="hero-stat-num">{total_firms}</div><div class="hero-stat-label">Firms</div></div>
-            <div class="hero-stat">{_ICON_CHECK}<div class="hero-stat-num">&plusmn;{meta['mae']:.1f}pp</div><div class="hero-stat-label">Typical error</div></div>
+            <div class="hero-stat">{_ICON_CHECK}<div class="hero-stat-num">{meta['mae']:.1f}pp</div><div class="hero-stat-label">Average absolute error</div></div>
           </div>
           <div class="hero-divider"></div>
         </div>
@@ -703,10 +771,11 @@ elif st.session_state.page == "results":
         )
 
     plain_terms = (
-        f"Based on what you entered, this model expects your firm's productivity to rise by "
-        f"about {pred:.1f}% as AI adoption continues at its current pace &mdash; "
+        f"The model estimates an expected productivity gain of about {pred:.1f}% for your firm, "
         f"{'above' if pred > SAMPLE_AVERAGE else 'below' if pred < SAMPLE_AVERAGE else 'in line with'} "
         f"the {SAMPLE_AVERAGE:.0f}% average across the surveyed firms."
+        '<div class="insight-card-note">This estimate reflects firms\' self-reported expectations of '
+        "AI-driven productivity gains, rather than measured productivity outcomes.</div>"
     )
     keep_in_mind = (
         f"This is built on firms' self-reported expectations, not measured outcomes, and typically "

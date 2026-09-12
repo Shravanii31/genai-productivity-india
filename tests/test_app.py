@@ -1,7 +1,7 @@
 """Headless smoke test for app/app.py using streamlit.testing.v1.AppTest.
 
 Three distinct pages behind st.session_state.page ("intro" | "inputs" | "results"):
-intro (hero + 5 About cards + "Get started") -> inputs (AI footprint, digitization,
+intro (hero + 8 About cards + "Get started") -> inputs (AI footprint, digitization,
 what matters most + "Back" / "See my results") -> results (gauge + charts +
 summary + "Edit my inputs"). Only one page's content is ever visible at a time.
 """
@@ -42,10 +42,10 @@ def about_card_count():
 # --- Page 1: intro ---
 assert len(at.pills) == 0 and len(at.slider) == 0, "No inputs should render on the intro page"
 assert not has_gauge(), "No gauge should render on the intro page"
-assert about_card_count() == 5, f"Expected 5 About cards on the intro page, found {about_card_count()}"
+assert about_card_count() == 8, f"Expected 8 About cards on the intro page, found {about_card_count()}"
 get_started = [b for b in at.button if "Get started" in b.label]
 assert len(get_started) == 1, f"Expected one 'Get started' button, found {len(get_started)}"
-print("Page 1 (intro) OK -- 5 About cards, 0 inputs, Get started button present")
+print("Page 1 (intro) OK -- 8 About cards, 0 inputs, Get started button present")
 
 get_started[0].click().run()
 assert not at.exception, f"Exception after clicking 'Get started': {at.exception}"
@@ -96,7 +96,7 @@ back_btn = [b for b in at.button if b.label == "← Back"][0]
 back_btn.click().run()
 assert not at.exception, f"Exception after clicking '← Back': {at.exception}"
 assert at.session_state["page"] == "intro"
-assert about_card_count() == 5, "About cards should be back on the intro page"
+assert about_card_count() == 8, "About cards should be back on the intro page"
 print("Navigated inputs -> intro OK")
 
 print("\nALL CHECKS PASSED.")
