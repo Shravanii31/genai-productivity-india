@@ -39,7 +39,13 @@ def load_final_model():
     if meta["kind"] == "keras":
         from tensorflow import keras
         model = keras.models.load_model(MODELS_DIR / meta["artifact"])
-        predict_fn = lambda X: model.predict(X, verbose=0).flatten()
+        if meta.get("target_scaled"):
+            y_scaler = joblib.load(MODELS_DIR / "target_scaler.joblib")
+            def predict_fn(X):
+                pred_scaled = model.predict(X, verbose=0).flatten()
+                return y_scaler.inverse_transform(pred_scaled.reshape(-1, 1)).flatten()
+        else:
+            predict_fn = lambda X: model.predict(X, verbose=0).flatten()
     else:
         model = joblib.load(MODELS_DIR / meta["artifact"])
         predict_fn = lambda X: model.predict(X)

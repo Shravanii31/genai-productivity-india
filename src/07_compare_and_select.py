@@ -21,17 +21,19 @@ import pandas as pd
 REPORTS_DIR = Path("reports")
 MODELS_DIR = Path("models")
 
-# maps the "model" name used in metrics_*.csv to (artifact filename, kind, feature_space)
+# maps the "model" name used in metrics_*.csv to (artifact filename, kind, feature_space, target_scaled)
 # feature_space is "scaled" (imputed + StandardScaler) or "imputed" (imputed only, raw units)
+# target_scaled is True for the Keras models, which are trained on a StandardScaler'd
+# target (models/target_scaler.joblib) and need predictions inverse-transformed
 MODEL_ARTIFACTS = {
-    "Mean baseline": ("mean_baseline.joblib", "sklearn", "scaled"),
-    "Linear Regression": ("linear_regression.joblib", "sklearn", "scaled"),
-    "Stacking (RF+GB+ET -> Ridge)": ("stacking.joblib", "sklearn", "imputed"),
-    "Random Forest (tuned)": ("random_forest.joblib", "sklearn", "imputed"),
-    "Gradient Boosting (tuned)": ("gradient_boosting.joblib", "sklearn", "imputed"),
-    "Extra Trees (tuned)": ("extra_trees.joblib", "sklearn", "imputed"),
-    "Plain NN": ("plain_nn.keras", "keras", "scaled"),
-    "Hybrid Wide & Deep": ("hybrid_wide_deep.keras", "keras", "scaled"),
+    "Mean baseline": ("mean_baseline.joblib", "sklearn", "scaled", False),
+    "Linear Regression": ("linear_regression.joblib", "sklearn", "scaled", False),
+    "Stacking (RF+GB+ET -> Ridge)": ("stacking.joblib", "sklearn", "imputed", False),
+    "Random Forest (tuned)": ("random_forest.joblib", "sklearn", "imputed", False),
+    "Gradient Boosting (tuned)": ("gradient_boosting.joblib", "sklearn", "imputed", False),
+    "Extra Trees (tuned)": ("extra_trees.joblib", "sklearn", "imputed", False),
+    "Plain NN": ("plain_nn.keras", "keras", "scaled", True),
+    "Hybrid Wide & Deep": ("hybrid_wide_deep.keras", "keras", "scaled", True),
 }
 
 
@@ -40,9 +42,9 @@ def _match_artifact(model_name: str):
         return MODEL_ARTIFACTS[model_name]
     # Ridge/Lasso names carry their fitted alpha, e.g. "Ridge (alpha=10)"
     if model_name.startswith("Ridge"):
-        return ("ridge.joblib", "sklearn", "scaled")
+        return ("ridge.joblib", "sklearn", "scaled", False)
     if model_name.startswith("Lasso"):
-        return ("lasso.joblib", "sklearn", "scaled")
+        return ("lasso.joblib", "sklearn", "scaled", False)
     raise KeyError(f"No artifact mapping for model '{model_name}'")
 
 
@@ -59,7 +61,7 @@ def main():
 
     best_row = combined.iloc[0]
     best_name = best_row["model"]
-    artifact_name, kind, feature_space = _match_artifact(best_name)
+    artifact_name, kind, feature_space, target_scaled = _match_artifact(best_name)
 
     src = MODELS_DIR / artifact_name
     dst = MODELS_DIR / ("final_model.keras" if kind == "keras" else "final_model.joblib")
@@ -74,6 +76,7 @@ def main():
         "artifact": dst.name,
         "kind": kind,
         "feature_space": feature_space,
+        "target_scaled": target_scaled,
         "r2": float(best_row["r2"]),
         "rmse": float(best_row["rmse"]),
         "mae": float(best_row["mae"]),

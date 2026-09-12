@@ -3,6 +3,7 @@
   "artifact": "final_model.joblib",
   "kind": "sklearn",
   "feature_space": "imputed",
+  "target_scaled": false,
   "r2": 0.6206787887385447,
   "rmse": 4.042022067520489,
   "mae": 2.871028672303612,

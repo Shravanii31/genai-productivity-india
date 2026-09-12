@@ -82,6 +82,9 @@ Key findings (figures in `figures/01`-`05`):
    across every model (788 train / 198 test firms).
 6. **Imputation + scaling**: median imputation followed by `StandardScaler`, both
    fit on the training split only and applied unchanged to the test split.
+7. **Target scaling for the neural models**: the target itself (mean~11, std~7.5)
+   is also standardized (fit on the training split) before training the plain NN
+   and the hybrid -- see Section 8.3 for why this mattered.
 
 ## 7. Feature Engineering
 
@@ -147,6 +150,48 @@ deep path pick up any nonlinear structure the linear path misses.
 - Plain feedforward neural network (the hybrid's deep component alone, trained
   independently, for a controlled comparison)
 
+### 8.3 A convergence bug, caught and fixed before finalizing
+
+An earlier version of this analysis trained the plain NN and hybrid directly on
+the *unscaled* target (`ai_f2a2`, mean~11, std~7.5), while the 25 input features
+were standardized as usual. Both models scored well below plain Linear
+Regression (R^2 ~0.28-0.35 vs Linear's 0.48) -- unusual enough that it warranted
+checking rather than accepting as "deep learning's limitation," since an
+under-converged network is a far more common explanation for a neural model
+losing to plain linear regression than a genuine architectural ceiling.
+
+The diagnosis: loss curves showed clean, stable convergence for both models
+(steep drop, plateau, clean early stop -- no divergence), which ruled out a
+learning-rate blowup. That pointed instead to the target scale itself: an
+unscaled regression target combined with small-magnitude default weight
+initialization is a known cause of slow, suboptimal convergence, since the
+network has to learn an output bias/scale roughly matching the target's
+magnitude before it can start fitting structure. This was confirmed directly:
+adding target standardization (fit on the training split, inverse-transformed
+before scoring) raised validation R^2 for both models (plain NN 0.46 -> 0.54,
+hybrid 0.46 -> 0.49) in a controlled A/B comparison that changed nothing else.
+
+A second issue surfaced once target scaling was in place: single-run test R^2
+for these two models varied enormously by random seed (hybrid ranged from 0.23
+to 0.52 across 5 seeds on one architecture) -- expected for small networks on a
+788-row training set, but it means any single test-set number is close to
+meaningless on its own. The fix adopted here: report the **mean test R^2 over 5
+independent seeds** (0-4) as the comparison metric for both neural models,
+rather than one lucky-or-unlucky run (full per-seed detail in
+`reports/deep_model_seed_stability.csv`). A lighter plain-NN architecture
+(64->32->16, dropout 0.2/0.1/0.1, selected via a validation-only comparison
+against the original 128->64->32) is used for the plain NN; the hybrid keeps its
+original architecture, since only the target-scaling fix was being isolated
+there.
+
+**Net effect**: target scaling was a real bug, not a red herring. Fixing it
+raised the plain NN's mean test R^2 from ~0.32 to ~0.47 -- now within a hair of
+Linear Regression's 0.48. The hybrid's mean rose from ~0.28-0.35 to ~0.39. The
+qualitative conclusion is unchanged (tree ensembles still win decisively, see
+Section 10), but the deep models are no longer being sold short by a fixable
+convergence issue -- what's reported below is their genuine, validated ceiling
+on this dataset.
+
 ## 9. Model Validation
 
 - Fixed 80/20 train-test split, `random_state=42`, identical for every model.
@@ -166,20 +211,23 @@ deep path pick up any nonlinear structure the linear path misses.
 | Lasso | 0.487 | 4.70 | 3.37 |
 | Linear Regression | 0.481 | 4.73 | 3.40 |
 | Ridge | 0.480 | 4.73 | 3.40 |
-| Plain feedforward NN | 0.32-0.35 | 5.3-5.4 | 3.5-3.6 |
-| **Hybrid Wide & Deep** | 0.28-0.35 | 5.3-5.6 | 3.7 |
+| Plain feedforward NN | 0.465 (±0.054) | 4.79 | 3.40 |
+| Hybrid Wide & Deep | 0.395 (±0.054) | 5.10 | 3.57 |
 | Mean baseline | -0.003 | 6.57 | 5.41 |
 
-*(Deep-learning rows vary slightly run to run due to network weight
-initialization; see `reports/model_comparison.csv` for the exact run backing the
-deployed model.)*
+*(Plain NN / Hybrid rows are the mean ± std over 5 seeds, test set, after the
+target-scaling fix described in Section 8.3 -- see
+`reports/deep_model_seed_stability.csv` for every individual run and
+`reports/metrics_deep.csv` for the exact numbers backing this table. All other
+rows are deterministic given `random_state=42`.)*
 
 **The tree ensembles win, clearly and consistently.** Extra Trees (tuned) was
 selected as the deployed model with test R^2 = 0.621, RMSE = 4.04, MAE = 2.87 --
-essentially tied with the Stacking ensemble and Random Forest. The hybrid Wide &
-Deep model, while successfully implemented and trained end-to-end, does **not**
-outperform the tree ensembles, and in fact performs similarly to (or slightly
-worse than) the plain linear models.
+essentially tied with the Stacking ensemble and Random Forest. After fixing the
+target-scaling issue in Section 8.3, the plain NN closed most of its gap with
+linear regression (mean R^2 0.465 vs Linear's 0.481 -- within noise of each
+other) and the hybrid improved similarly (0.395, up from ~0.28-0.35 pre-fix).
+Neither deep model outperforms the tree ensembles.
 
 **Why the hybrid didn't win, honestly**: this is a small tabular dataset (788
 training rows, 25 features). Deep learning architectures generally need
@@ -189,9 +237,11 @@ mixed-type, non-smooth features very well precisely because they partition the
 feature space directly rather than trying to learn a smooth function through
 gradient descent. This is a well-documented finding in the ML literature (e.g.
 Grinsztajn et al., 2022, on why tree-based models still outperform deep learning
-on tabular data), not a flaw in the Wide & Deep implementation. The hybrid model
-is included in full per the assignment's ML+DL requirement, and the comparison
-above is reported without adjustment.
+on tabular data), not a flaw in the Wide & Deep implementation -- and, per
+Section 8.3, not a convergence artifact either, since that was specifically
+checked and fixed first. The hybrid model is included in full per the
+assignment's ML+DL requirement, and the comparison above is reported without
+adjustment.
 
 Best hyperparameters found (`reports/baseline_best_params.json`):
 - Random Forest: 500 trees, max_depth=10, max_features='sqrt'
@@ -233,9 +283,12 @@ reproducible cleaning and feature-engineering process, supports a regression
 model that explains roughly 62% of the variance in firms' self-reported expected
 AI productivity gains. Tree ensembles (Extra Trees, in a near-tie with a
 Stacking ensemble and Random Forest) outperform both classical linear models and
-a purpose-built hybrid Wide & Deep neural network on this dataset. The winning
-model is deployed as an interactive Streamlit application that estimates a
-firm's expected AI productivity gain from a short wizard of inputs.
+a purpose-built hybrid Wide & Deep neural network on this dataset -- a
+conclusion checked, not assumed: an initial version of the deep models
+under-converged due to an unscaled training target, and was corrected and
+re-validated (Section 8.3) before this result was finalized. The winning model
+is deployed as an interactive Streamlit application that estimates a firm's
+expected AI productivity gain from a short wizard of inputs.
 
 ## 13. Limitations
 
