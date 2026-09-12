@@ -234,14 +234,14 @@ div[data-testid="stSlider"] [data-baseweb="slider"] > div > div {
 
 /* hero */
 div.st-key-hero_wrap { text-align: center; padding: 1rem 0 0.3rem; }
-.hero-content { max-width: 680px; margin: 0 auto; text-align: center; }
+.hero-content { max-width: 700px; margin: 0 auto; text-align: center; }
 .hero-title {
     background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text; font-family: 'Space Grotesk', sans-serif;
-    font-size: 4rem; line-height: 1.1; font-weight: 700; margin-bottom: 0.6rem;
-    text-align: center;
+    font-size: clamp(2.2rem, 4vw, 3rem); line-height: 1.1; font-weight: 700; margin-bottom: 0.6rem;
+    text-align: center; white-space: nowrap;
 }
-.hero-sub { color: var(--text-dim); font-size: 1.5rem; margin-bottom: 1.5rem; }
+.hero-sub { color: var(--text-dim); font-size: clamp(0.8rem, 2vw, 1rem); margin-bottom: 1.5rem; white-space: nowrap; }
 .hero-stats { display: flex; justify-content: center; gap: 2.8rem; margin-bottom: 1.2rem; }
 .hero-stat { text-align: center; }
 .hero-stat-icon { margin: 0 auto 0.35rem; display: block; }
@@ -257,6 +257,47 @@ div.st-key-hero_wrap { text-align: center; padding: 1rem 0 0.3rem; }
 .hero-feature-check { color: var(--accent-purple); font-weight: 700; margin-right: 0.3rem; }
 .jump-link { display: inline-block; margin-top: 0.6rem; color: var(--text-dim); font-size: 0.85rem; text-decoration: none; border-bottom: 1px dashed var(--border); padding-bottom: 2px; }
 .jump-link:hover { color: var(--accent-purple); border-color: var(--accent-purple); }
+
+/* Intro-page hero only (div.st-key-intro_hero_wrap) -- bigger/more prominent than
+   the results-page hero, which still uses the base .hero-* sizing above via its
+   own div.st-key-hero_wrap container. These overrides win on specificity
+   (container class + element class) without touching the shared base rules. */
+div.st-key-intro_hero_wrap { padding: 2rem 0 1.1rem; }
+div.st-key-intro_hero_wrap .hero-content { max-width: 720px; }
+/* Max bound kept below the ~3.8rem originally tried -- at that size "Your AI
+   Productivity Edge" overflowed the 720px container and got clipped by
+   white-space:nowrap (confirmed visually, not just estimated). 3.2rem is the
+   largest that reliably fits this exact title on one line at this width. */
+div.st-key-intro_hero_wrap .hero-title { font-size: clamp(2.8rem, 5vw, 3.2rem); }
+div.st-key-intro_hero_wrap .hero-sub { font-size: clamp(0.95rem, 2.3vw, 1.15rem); margin-bottom: 2rem; }
+div.st-key-intro_hero_wrap .hero-stats { gap: 3.4rem; margin-bottom: 1.6rem; }
+div.st-key-intro_hero_wrap .hero-stat-num { font-size: 3.1rem; }
+div.st-key-intro_hero_wrap .hero-stat-label { font-size: 1rem; }
+div.st-key-intro_hero_wrap .hero-features { gap: 1.9rem; margin-bottom: 1.3rem; }
+div.st-key-intro_hero_wrap .hero-feature { font-size: 1.1rem; }
+
+/* "About" block -- 5 explanatory sections between the hero and the first input
+   section. Reuses .section-heading's type scale but with a tighter top margin
+   so the 5 read as one cohesive group rather than 5 separate page sections.
+   Deliberately more compact than the hero above it -- supporting/reference
+   material, not the visual anchor of the page. */
+.about-heading { font-size: 1.85rem; font-weight: 700; font-family: 'Space Grotesk', sans-serif; margin: 0.75rem 0 0.15rem; }
+.about-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 0.8rem 0.95rem; margin: 0; font-size: 0.92rem; line-height: 1.45; }
+.stat-highlight { color: var(--accent-purple); font-weight: 700; }
+
+.about-flow { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.4rem; margin-top: 1rem; }
+.about-flow-step {
+    background: var(--panel-2); border: 1px solid var(--accent-purple);
+    border-radius: 10px; padding: 0.5rem 0.5rem; font-size: 0.8rem; font-weight: 600;
+    color: var(--text-dim); text-align: center; flex: 1 1 90px; min-width: 80px;
+}
+.about-flow-step.alt { background: var(--panel); border-color: var(--accent-yellow); }
+.about-flow-arrow { color: var(--accent-purple); font-size: 1.1rem; font-weight: 700; flex: 0 0 auto; }
+@media (max-width: 600px) {
+  .about-flow-arrow { display: none; }
+  .about-flow-step { flex: 1 1 45%; }
+}
+.about-stats { display: flex; justify-content: center; gap: 2.4rem; margin-top: 1rem; flex-wrap: wrap; }
 
 /* big centered CTA at the bottom of the input page */
 div.st-key-cta_wrap { display: flex; justify-content: center; margin: 1.6rem 0 1rem; }
@@ -284,8 +325,8 @@ _ICON_CHECK = """<svg class="hero-stat-icon" width="20" height="20" viewBox="0 0
 <circle cx="12" cy="12" r="9" stroke="#C77DFF" stroke-width="2"/><path d="M8 12l3 3 5-6" stroke="#C77DFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>"""
 
-if "show_results" not in st.session_state:
-    st.session_state.show_results = False
+if "page" not in st.session_state:
+    st.session_state.page = "intro"  # "intro" | "inputs" | "results"
 # Explicit persisted store for input values, independent of widget key state.
 # Streamlit does NOT reliably keep a widget's session_state[key] value when the
 # widget is omitted from one or more reruns and then re-instantiated later
@@ -303,16 +344,17 @@ meta, _, _, _, _ = load_artifacts()
 total_firms = meta["n_train"] + meta["n_test"]
 
 # ===========================================================================
-# INPUT PAGE -- hero + all inputs. Hidden entirely once show_results is True.
+# PAGE 1: INTRO -- hero + the 5 "About" cards. Only this page's content shows
+# while st.session_state.page == "intro".
 # ===========================================================================
 
-if not st.session_state.show_results:
+if st.session_state.page == "intro":
 
-    with st.container(key="hero_wrap"):
+    with st.container(key="intro_hero_wrap"):
         st.html(f"""
         <div class="hero-content">
           <div class="hero-title">Your AI Productivity Edge</div>
-          <div class="hero-sub">A data-driven estimate of your firm's AI upside &mdash; built from a survey of {total_firms} Indian businesses.</div>
+          <div class="hero-sub">A data-driven estimate of your firm's AI upside ; built from a survey of {total_firms} Indian businesses.</div>
           <div class="hero-stats">
             <div class="hero-stat">{_ICON_TARGET}<div class="hero-stat-num">{meta['r2']:.2f}</div><div class="hero-stat-label">Test R&sup2;</div></div>
             <div class="hero-stat">{_ICON_CHART}<div class="hero-stat-num">{total_firms}</div><div class="hero-stat-label">Firms</div></div>
@@ -324,13 +366,88 @@ if not st.session_state.show_results:
             <div class="hero-feature"><span class="hero-feature-check">&#10003;</span>Instant estimate</div>
             <div class="hero-feature"><span class="hero-feature-check">&#10003;</span>Built on real survey data</div>
           </div>
-          <a class="jump-link" href="#get-started">&darr; Get started</a>
         </div>
         """)
 
+    # -----------------------------------------------------------------------
+    # About block -- 5 explanatory sections, below the hero on this same page.
+    # -----------------------------------------------------------------------
+
+    flow_steps = ["Your inputs", "Data preprocessing", "Trained model", "Productivity estimate"]
+    flow_html = '<div class="about-flow">'
+    for i, step in enumerate(flow_steps):
+        step_cls = "about-flow-step alt" if i % 2 == 1 else "about-flow-step"
+        flow_html += f'<div class="{step_cls}">{step}</div>'
+        if i < len(flow_steps) - 1:
+            flow_html += '<div class="about-flow-arrow">&rarr;</div>'
+    flow_html += "</div>"
+
+    st.html("""
+    <div class="about-heading">What is this project?</div>
+    <div class="about-card">This project uses statistical and machine learning techniques to
+    estimate how AI adoption can influence business productivity. By analysing data from 986
+    Indian businesses, the model identifies patterns between AI usage, workforce characteristics,
+    business practices, and productivity outcomes.</div>
+    """)
+
+    st.html(f"""
+    <div class="about-heading">How does the model work?</div>
+    <div class="about-card">The model analyses multiple business and AI-related factors to
+    generate an estimated productivity outcome. Users provide information about their
+    organisation, AI adoption, workforce, and business practices. These inputs are processed by
+    the trained model to produce an instant estimate.
+    {flow_html}
+    </div>
+    """)
+
+    st.html(f"""
+    <div class="about-heading">About the dataset</div>
+    <div class="about-card">The analysis is based on survey data collected from {total_firms}
+    Indian businesses. The dataset captures information related to AI adoption, business
+    operations, workforce characteristics, technology usage, and organisational practices.
+    <div class="about-stats">
+      <div class="hero-stat"><div class="hero-stat-num">{total_firms}</div><div class="hero-stat-label">Businesses surveyed</div></div>
+      <div class="hero-stat"><div class="hero-stat-num">25</div><div class="hero-stat-label">Predictive features</div></div>
+      <div class="hero-stat"><div class="hero-stat-num">India</div><div class="hero-stat-label">Survey coverage</div></div>
+    </div>
+    </div>
+    """)
+
+    st.html("""
+    <div class="about-heading">Why measure AI productivity?</div>
+    <div class="about-card">AI adoption is changing how businesses perform everyday tasks, make
+    decisions, and allocate resources. Measuring its potential productivity impact can help
+    organisations understand where AI may create value and where additional investment or
+    organisational changes may be required.</div>
+    """)
+
+    st.html(f"""
+    <div class="about-heading">Understanding the model performance</div>
+    <div class="about-card">The model achieves a test R&sup2; of <span class="stat-highlight">{meta['r2']:.2f}</span>,
+    meaning it explains a substantial share of the variation in the observed productivity outcome.
+    The typical prediction error is approximately <span class="stat-highlight">&plusmn;{meta['mae']:.1f} percentage points</span>,
+    providing an indication of the uncertainty around individual estimates.</div>
+    """)
+
+    with st.container(key="cta_wrap"):
+        if st.button("Get started →"):
+            st.session_state.page = "inputs"
+            st.rerun()
+
+# ===========================================================================
+# PAGE 2: INPUTS -- all input sections. Only shows while page == "inputs".
+# ===========================================================================
+
+elif st.session_state.page == "inputs":
+
+    with st.container(key="edit_wrap"):
+        if st.button("← Back"):
+            st.session_state.page = "intro"
+            st.rerun()
+
     saved = st.session_state.saved
 
-    st.html('<div id="get-started"></div><div class="section-heading">Your AI footprint</div><div class="section-sub">What AI tools and tasks are already part of your workflow?</div>')
+    st.html('<div class="section-heading">Your AI footprint</div><div class="section-sub">What AI tools and tasks are already part of your workflow?</div>')
     with st.container(key="pills_wrap", gap=None):
         st.pills(
             "AI technologies in use",
@@ -377,17 +494,17 @@ if not st.session_state.show_results:
                 "idle_time": st.session_state["idle_time"],
                 "more_hours": st.session_state["more_hours"],
             }
-            st.session_state.show_results = True
+            st.session_state.page = "results"
             st.rerun()
 
 # ===========================================================================
-# RESULTS PAGE -- shown instead of (not alongside) the inputs.
+# PAGE 3: RESULTS -- shown instead of (not alongside) the other two pages.
 # ===========================================================================
 
-else:
+elif st.session_state.page == "results":
     with st.container(key="edit_wrap"):
         if st.button("← Edit my inputs"):
-            st.session_state.show_results = False
+            st.session_state.page = "inputs"
             st.rerun()
 
     # Widgets aren't instantiated on this page -- read the values captured into
