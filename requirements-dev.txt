@@ -1,0 +1,10 @@
+# Full pipeline (data cleaning, feature engineering, EDA, training, interpretation).
+# Superset of requirements.txt -- includes everything needed to reproduce the
+# project end-to-end, whether or not the deployed model ends up being the Keras hybrid.
+-r requirements.txt
+
+tensorflow-cpu==2.16.2
+matplotlib==3.11.2
+seaborn==0.13.2
+pyarrow==24.0.0
+scipy==1.17.1

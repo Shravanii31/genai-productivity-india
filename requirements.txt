@@ -1,0 +1,10 @@
+# Deployment dependencies for the Streamlit app.
+# The final deployed model (Extra Trees, see models/final_model_meta.json) is a
+# scikit-learn estimator -- no TensorFlow needed at inference time. If the winning
+# model is ever re-selected to be the Keras hybrid, add tensorflow-cpu==2.16.2 here
+# (see requirements-dev.txt) and pin it to match the version used to save the model.
+streamlit==1.60.0
+pandas==3.0.5
+numpy==1.26.4
+scikit-learn==1.9.1
+joblib==1.6.0

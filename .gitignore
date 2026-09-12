@@ -1,0 +1,22 @@
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+.ipynb_checkpoints/
+.claude/
+
+# raw restricted survey microdata - not redistributable
+data/raw_survey.dta
+data/*.dta
+
+# large/derived artifacts users can regenerate; keep final model + metrics tracked
+data/interim/
+data/processed/
+
+.streamlit/secrets.toml
+
+# large intermediate model artifacts, reproducible via src/05_train_baseline_models.py --
+# only the deployed final model + small baselines are tracked
+models/extra_trees.joblib
+models/random_forest.joblib
+models/stacking.joblib
