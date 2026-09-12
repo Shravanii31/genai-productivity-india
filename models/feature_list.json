@@ -1,0 +1,30 @@
+{
+  "features": [
+    "reskilling_need_share",
+    "workers_wanting_more_hours_share",
+    "idle_time_share",
+    "admin_worker_share",
+    "share_clerical",
+    "sales_seasonality_ratio",
+    "policy_support_score",
+    "ai_b3a3_flag",
+    "share_professionals",
+    "ai_b2a4_flag",
+    "share_managers",
+    "worker_seasonality_ratio",
+    "uses_genai",
+    "share_computer_use",
+    "log_workers",
+    "task_breadth",
+    "finance_digitization",
+    "ai_g1b_flag",
+    "customer_digitization",
+    "ai_b3a2_flag",
+    "can_absorb_demand_shock",
+    "supplychain_digitization",
+    "ai_breadth_score",
+    "ai_g1f_flag",
+    "has_website"
+  ],
+  "target": "ai_f2a2"
+}

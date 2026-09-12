@@ -7,10 +7,20 @@ model. If a tree ensemble wins, the writeup says so plainly (small tabular datas
 like this one, ~800 training rows, are a well-known hard case for deep learning to
 beat gradient-boosted/random-forest ensembles on).
 
+This is also where every file the DEPLOYED APP needs at runtime gets staged into
+models/ -- the only data directory that's actually tracked in git (data/interim/
+and data/processed/ are gitignored as regeneratable pipeline intermediates). The
+app must never read directly from data/processed/ or data/interim/: those don't
+exist on a fresh clone (e.g. Streamlit Cloud), only whatever main() writes below.
+
 Output:
   reports/model_comparison.csv        -- every model, sorted by test R^2
   models/final_model.*                -- copy of the winning model, deployment-ready
   models/final_model_meta.json        -- which model won, its metrics, its "kind"
+  models/feature_list.json            -- app-facing copy of the 25 feature names
+  models/sample_outcomes.csv          -- app-facing copy of just the 2 columns the
+                                          app's charts need (target + AI breadth),
+                                          not the full 25-feature modeling table
 """
 import json
 import shutil
@@ -92,6 +102,16 @@ def main():
 
     print(f"\nWinner: {best_name}  (R2={meta['r2']:.4f})")
     print(f"Deployed as {dst} ; metadata -> {MODELS_DIR / 'final_model_meta.json'}")
+
+    # --- Stage app-facing runtime data into models/ (tracked in git), since
+    # data/processed/ is gitignored and won't exist on a fresh clone/deploy ---
+    shutil.copy2("data/processed/feature_list.json", MODELS_DIR / "feature_list.json")
+    print(f"App feature list -> {MODELS_DIR / 'feature_list.json'}")
+
+    model_data = pd.read_csv("data/processed/model_data.csv")
+    sample_outcomes = model_data[["ai_f2a2", "ai_breadth_score"]]
+    sample_outcomes.to_csv(MODELS_DIR / "sample_outcomes.csv", index=False)
+    print(f"App sample outcomes ({len(sample_outcomes)} rows) -> {MODELS_DIR / 'sample_outcomes.csv'}")
 
 
 if __name__ == "__main__":

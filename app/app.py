@@ -58,7 +58,12 @@ def load_permutation_importance():
 
 @st.cache_data
 def load_modeling_sample():
-    return pd.read_csv(ROOT / "data" / "processed" / "model_data.csv")
+    # Deliberately NOT data/processed/model_data.csv: that directory is gitignored
+    # (regeneratable pipeline intermediate) and doesn't exist on a fresh clone/deploy.
+    # models/sample_outcomes.csv is the app-facing subset (just the 2 columns the
+    # charts below need), staged into the tracked models/ dir by
+    # src/07_compare_and_select.py.
+    return pd.read_csv(MODELS_DIR / "sample_outcomes.csv")
 
 st.set_page_config(page_title="Your AI Productivity Edge", page_icon="📈", layout="centered")
 
@@ -92,7 +97,9 @@ DEFAULTS = {
 def load_artifacts():
     with open(MODELS_DIR / "final_model_meta.json") as fh:
         meta = json.load(fh)
-    with open(ROOT / "data" / "processed" / "feature_list.json") as fh:
+    # Not data/processed/feature_list.json -- gitignored, absent on a fresh clone.
+    # models/feature_list.json is the tracked copy staged by 07_compare_and_select.py.
+    with open(MODELS_DIR / "feature_list.json") as fh:
         feature_spec = json.load(fh)
 
     imputer = joblib.load(MODELS_DIR / "imputer.joblib")
